@@ -2,10 +2,6 @@ os: linux
 dist: xenial
 addons:
     chrome: stable
-    sonarcloud:
-        organization: "opfab"
-        token:
-          secure: "Y6lcwkarytMScY+s2DLUuXodA6mQSBXqtuiypw6g6MO8xn5HUwy0MtmYVTfoNCRjSlZcFDaoLPFlkitRCAeZKJpeIw1iGbJFeLWUDI9QLwXebni4WuaWhNjuYIYt8IcP6im4YdzRuzz/TG1FHShtIDwhg7assBy4L/vtiOUTfxP8+/JgAR3Hl/OWFl0s+DY7Ldc8DnS7KTaXu/imjIKE68yWz77uYGzS+P4BZP79peVjSIoQXIb4p8KyfPJvIHEnt/m1MHDr67LzkUd2alypkCNSG/vxlL07oJTJQyPWKihpzHiXVH5jL4RTZVLVjBsSIuzMuf/jzP+s8S+iuEgHAKj+SC8DF02pciRj6naZNcXBFBTW9YeAXqLD3Eim/ZvGQtPq88KXZsvqJ9XluRz4Zx9cTDtjty7RQJBQzP98cA4n0d1t5NWRcyBJoijpDDax5jD6QkICAGtfR7Q8X0r8/TXf3VhTI/z3fhikTqTPvBd5jdFG3gkg/kTW6IFU95mAMQBC4CIKxNPnt7ojp+ZaqXKynbtD5FparQTP9sFOncen5M8AepQKnRGY8evfXl230PkDHA1S1YFfN/EdSd0tmkOV1nck9P+0Z25V1eXObJcMV3lHwFAosF9523t82DOWc+3bJgCmHa3AXKGoqB1sOFzgh7eOOudcGd2pcBjmMyU="
 services:
   - docker
 language: java
@@ -52,7 +48,6 @@ jobs:
         - docker-compose -f src/main/docker/test-environment/docker-compose.yml up -d
         - ./gradlew --build-cache copyDependencies test jacocoTestReport
         - docker-compose -f src/main/docker/test-environment/docker-compose.yml down
-        - sonar-scanner
     - stage: docker-tag-version
       script:
         - echo preparing images for version $OF_VERSION
@@ -115,15 +110,15 @@ jobs:
 stages:
   # Note: The condition on type is necessary to exclude PRs because their base branch is usually develop
   - name: test
-    if: type = pull_request AND head_repo != opfab/operatorfabric-core
+    if: type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core
   - name: test-sonar
-    if: NOT (type = pull_request AND head_repo != opfab/operatorfabric-core)
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
   - name: docker-tag-version
-    if: NOT (type = pull_request AND head_repo != opfab/operatorfabric-core)
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
   - name: karate
-    if: NOT (type = pull_request AND head_repo != opfab/operatorfabric-core)
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
   - name: cypress
-    if: NOT (type = pull_request AND head_repo != opfab/operatorfabric-core)
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
   - name: doc
     if: ((((type = cron OR commit_message =~ ci_documentation) AND branch = develop) OR (commit_message =~ ci_documentation AND NOT commit_message =~ ci_latest AND branch =~ .+hotfixes$)) AND NOT type = pull_request)
   - name: doc-latest
