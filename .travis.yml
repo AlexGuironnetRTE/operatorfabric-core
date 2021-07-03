@@ -84,6 +84,8 @@ jobs:
         - cd $OF_HOME/config/docker
         - docker-compose down
       name: cypress
+      workspaces:
+        use: docker-images
     - stage: doc
       script:
         - ./gradlew --build-cache generateSwaggerUI asciidoctor
