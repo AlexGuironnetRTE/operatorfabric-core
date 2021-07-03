@@ -2,10 +2,6 @@ os: linux
 dist: xenial
 addons:
     chrome: stable
-    sonarcloud:
-        organization: "opfab"
-        token:
-          secure: "Y6lcwkarytMScY+s2DLUuXodA6mQSBXqtuiypw6g6MO8xn5HUwy0MtmYVTfoNCRjSlZcFDaoLPFlkitRCAeZKJpeIw1iGbJFeLWUDI9QLwXebni4WuaWhNjuYIYt8IcP6im4YdzRuzz/TG1FHShtIDwhg7assBy4L/vtiOUTfxP8+/JgAR3Hl/OWFl0s+DY7Ldc8DnS7KTaXu/imjIKE68yWz77uYGzS+P4BZP79peVjSIoQXIb4p8KyfPJvIHEnt/m1MHDr67LzkUd2alypkCNSG/vxlL07oJTJQyPWKihpzHiXVH5jL4RTZVLVjBsSIuzMuf/jzP+s8S+iuEgHAKj+SC8DF02pciRj6naZNcXBFBTW9YeAXqLD3Eim/ZvGQtPq88KXZsvqJ9XluRz4Zx9cTDtjty7RQJBQzP98cA4n0d1t5NWRcyBJoijpDDax5jD6QkICAGtfR7Q8X0r8/TXf3VhTI/z3fhikTqTPvBd5jdFG3gkg/kTW6IFU95mAMQBC4CIKxNPnt7ojp+ZaqXKynbtD5FparQTP9sFOncen5M8AepQKnRGY8evfXl230PkDHA1S1YFfN/EdSd0tmkOV1nck9P+0Z25V1eXObJcMV3lHwFAosF9523t82DOWc+3bJgCmHa3AXKGoqB1sOFzgh7eOOudcGd2pcBjmMyU="
 services:
   - docker
 language: java
@@ -37,6 +33,7 @@ install:
   - node --version
   - sdk version
   - javac -version
+  - docker info
 jobs:
   include:
     - stage: test
@@ -49,26 +46,46 @@ jobs:
       script:
         - docker login --username ${DOCKER_CLOUD_USER} --password ${DOCKER_CLOUD_PWD}
         - docker-compose -f src/main/docker/test-environment/docker-compose.yml up -d
-        - ./gradlew --build-cache copyDependencies test jacocoTestReport dockerTag${OF_VERSION}
-        - sonar-scanner
+        - ./gradlew --build-cache copyDependencies test jacocoTestReport
         - docker-compose -f src/main/docker/test-environment/docker-compose.yml down
-        # Launch karate tests
-        - cd config/docker
+    - stage: docker-tag-version
+      script:
+        - echo preparing images for version $OF_VERSION
+        - ./gradlew --build-cache copyWorkingDir dockerTag${OF_VERSION} -x test
+        - docker image ls -a|grep lfeoperatorfabric
+        - docker save $(docker images --filter=reference="lfeoperatorfabric/*" --format "{{.Repository}}:{{.Tag}}") | gzip > local_opfab_images.tar.gz
+      workspaces:
+        create:
+          name: docker-images
+          paths:
+            - local_opfab_images.tar.gz
+    - stage: integration-tests
+      workspaces:
+        use: docker-images
+      name: karate
+      script:
+        - docker load < local_opfab_images.tar.gz
+        - cd $OF_HOME/config/docker
         - ./docker-compose.sh
-        - cd ../../bin
+        - cd $OF_HOME/bin
         - ./waitForOpfabToStart.sh
-        - cd ../src/test/api/karate
+        - cd $OF_HOME/src/test/api/karate
         - ./launchAll.sh
-        - cd ../../../../config/docker
+        - cd $OF_HOME/config/docker
         - docker-compose down
-        # Launch cypress tests
+    - script:
+        - docker load < local_opfab_images.tar.gz
+        - cd $OF_HOME/config/docker
         - ./docker-compose-cypress.sh
-        - cd ../../bin
+        - cd $OF_HOME/bin
         - ./waitForOpfabToStart.sh
         - cd $OF_HOME
         - ./gradlew runCypressTests
-        - cd ./config/docker
+        - cd $OF_HOME/config/docker
         - docker-compose down
+      name: cypress
+      workspaces:
+        use: docker-images
     - stage: doc
       script:
         - ./gradlew --build-cache generateSwaggerUI asciidoctor
@@ -92,17 +109,18 @@ jobs:
         - docker login --username ${DOCKER_CLOUD_USER} --password ${DOCKER_CLOUD_PWD}
         - ./gradlew --build-cache copyWorkingDir dockerPushLatest -x test
         - docker image ls -a|grep lfeoperatorfabric
-    - stage: docker-tag-version
-      script:
-        - echo preparing images for version $OF_VERSION
-        - ./gradlew --build-cache copyWorkingDir dockerTag${OF_VERSION} -x test
-        - docker image ls -a|grep lfeoperatorfabric
 stages:
   # Note: The condition on type is necessary to exclude PRs because their base branch is usually develop
   - name: test
-    if: type = pull_request AND head_repo != opfab/operatorfabric-core
+    if: type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core
   - name: test-sonar
-    if: NOT (type = pull_request AND head_repo != opfab/operatorfabric-core)
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
+  - name: docker-tag-version
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
+  - name: karate
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
+  - name: cypress
+    if: NOT (type = pull_request AND head_repo != AlexGuironnetRTE/operatorfabric-core)
   - name: doc
     if: ((((type = cron OR commit_message =~ ci_documentation) AND branch = develop) OR (commit_message =~ ci_documentation AND NOT commit_message =~ ci_latest AND branch =~ .+hotfixes$)) AND NOT type = pull_request)
   - name: doc-latest
@@ -113,8 +131,6 @@ stages:
     if: (((type = cron OR commit_message =~ ci_docker) AND (branch = develop OR branch =~ .+hotfixes$)) OR branch = master) AND NOT type = pull_request
   - name: docker-push-latest
     if: branch = master OR (branch =~ .+hotfixes$ AND commit_message =~ ci_latest) AND NOT type = pull_request
-  - name: docker-tag-version
-    if: (branch =~ .+release$) OR (NOT (branch IN (master,develop)) AND commit_message =~ ci_docker)
 before_cache:
   # cleanup gradle caches
   - rm -f  ${HOME}/.gradle/caches/modules-2/modules-2.lock
